@@ -1,0 +1,22 @@
+# Môi trường ảo & cache
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# Dữ liệu & Model (KHÔNG đẩy lên Git vì nặng & bảo mật)
+data/*.csv
+model/*.pkl
+*.h5
+*.joblib
+
+# File hệ thống
+.DS_Store
+Thumbs.db
+.env
+*.log
+
+# VS Code
+.vscode/
+*.code-workspace
