@@ -1,0 +1,33 @@
+{
+    "built_at": "2026-04-27 22:31:02.219030",
+    "total": 5300,
+    "phishing": 300,
+    "benign": 5000,
+    "features": [
+        "UrlLength",
+        "NumDots",
+        "NumDash",
+        "NumDashInHostname",
+        "AtSymbol",
+        "TildeSymbol",
+        "NumUnderscore",
+        "NumPercent",
+        "NumAmpersand",
+        "NumHash",
+        "NumNumericChars",
+        "NoHttps",
+        "IpAddress",
+        "SubdomainLevel",
+        "HostnameLength",
+        "PathLength",
+        "QueryLength",
+        "DoubleSlashInPath",
+        "NumSensitiveWords",
+        "NumQueryComponents",
+        "DomainInPaths",
+        "HttpsInHostname",
+        "SuspiciousTLD",
+        "UrlEntropy",
+        "RandomString"
+    ]
+}
