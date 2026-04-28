@@ -1,4 +1,6 @@
-import os
+"""
+fetch_feeds.py — Thu thap du lieu phishing/benign tu cac nguon mo.
+"""
 import zipfile
 import requests
 import pandas as pd
@@ -9,79 +11,68 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def fetch_openphish():
-    print("Fetching OpenPhish feed...")
-    url = "https://openphish.com/feed.txt"
+    print("[1/3] Fetching OpenPhish feed...")
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        urls = response.text.strip().split('\n')
-        # Filter empty lines
-        urls = [u for u in urls if u]
-        df = pd.DataFrame({'url': urls})
-        df['label'] = 1
-        df['source'] = 'openphish'
-        df['fetched_at'] = pd.Timestamp.now()
-        out_path = DATA_DIR / "openphish_feed.csv"
-        df.to_csv(out_path, index=False)
-        print(f" -> Saved {len(df)} URLs to openphish_feed.csv")
+        resp = requests.get("https://openphish.com/feed.txt", timeout=15)
+        resp.raise_for_status()
+        urls = [u.strip() for u in resp.text.strip().split('\n') if u.strip()]
+        df = pd.DataFrame({'url': urls, 'label': 1, 'source': 'openphish',
+                           'fetched_at': str(pd.Timestamp.now())})
+        df.to_csv(DATA_DIR / "openphish_feed.csv", index=False)
+        print(f"      -> Saved {len(df)} phishing URLs")
         return len(df)
     except Exception as e:
-        print(f" -> Error fetching OpenPhish: {e}")
+        print(f"      -> ERROR: {e}")
         return 0
+
 
 def fetch_phishtank():
-    print("Fetching PhishTank feed...")
-    url = "http://data.phishtank.com/data/online-valid.csv"
+    print("[2/3] Fetching PhishTank feed...")
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        df = pd.read_csv(BytesIO(response.content))
-        df = df[['url']].copy()
+        headers = {'User-Agent': 'phishing-detector/1.0'}
+        resp = requests.get("http://data.phishtank.com/data/online-valid.csv",
+                            headers=headers, timeout=30)
+        resp.raise_for_status()
+        df_raw = pd.read_csv(BytesIO(resp.content))
+        df = df_raw[['url']].copy()
         df['label'] = 1
         df['source'] = 'phishtank'
-        df['fetched_at'] = pd.Timestamp.now()
-        out_path = DATA_DIR / "phishtank_feed.csv"
-        df.to_csv(out_path, index=False)
-        print(f" -> Saved {len(df)} URLs to phishtank_feed.csv")
+        df['fetched_at'] = str(pd.Timestamp.now())
+        df.to_csv(DATA_DIR / "phishtank_feed.csv", index=False)
+        print(f"      -> Saved {len(df)} phishing URLs")
         return len(df)
     except Exception as e:
-        print(f" -> Error fetching PhishTank: {e}")
+        print(f"      -> ERROR: {e}")
         return 0
+
 
 def fetch_tranco():
-    print("Fetching Tranco top-1m feed...")
-    url = "https://tranco-list.eu/top-1m.csv.zip"
+    print("[3/3] Fetching Tranco top-1m...")
     try:
-        response = requests.get(url, timeout=20)
-        response.raise_for_status()
-        with zipfile.ZipFile(BytesIO(response.content)) as z:
-            csv_filename = z.namelist()[0]
-            with z.open(csv_filename) as f:
-                df = pd.read_csv(f, header=None, names=['rank', 'domain'], nrows=5000)
-                df['url'] = 'http://' + df['domain']
-                df = df[['url']].copy()
-                df['label'] = 0
-                df['source'] = 'tranco'
-                df['fetched_at'] = pd.Timestamp.now()
-                out_path = DATA_DIR / "tranco_benign.csv"
-                df.to_csv(out_path, index=False)
-                print(f" -> Saved {len(df)} domains to tranco_benign.csv")
-                return len(df)
+        resp = requests.get("https://tranco-list.eu/top-1m.csv.zip", timeout=30)
+        resp.raise_for_status()
+        with zipfile.ZipFile(BytesIO(resp.content)) as z:
+            csv_name = z.namelist()[0]
+            with z.open(csv_name) as f:
+                df_raw = pd.read_csv(f, header=None, names=['rank', 'domain'], nrows=5000)
+        df = pd.DataFrame({'url': 'http://' + df_raw['domain'], 'label': 0,
+                           'source': 'tranco', 'fetched_at': str(pd.Timestamp.now())})
+        df.to_csv(DATA_DIR / "tranco_benign.csv", index=False)
+        print(f"      -> Saved {len(df)} benign domains")
+        return len(df)
     except Exception as e:
-        print(f" -> Error fetching Tranco: {e}")
+        print(f"      -> ERROR: {e}")
         return 0
 
+
 if __name__ == "__main__":
-    print("=== STARTING FEED FETCH ===")
-    phishing_count = 0
-    phishing_count += fetch_openphish()
-    phishing_count += fetch_phishtank()
-    
-    benign_count = fetch_tranco()
-    
-    print("\n=== SUMMARY ===")
-    print(f"Total Phishing URLs: {phishing_count}")
-    print(f"Total Benign URLs  : {benign_count}")
-    print("Done.")
+    print("=" * 50)
+    print("FEED FETCH - START")
+    print("=" * 50)
+    phishing = fetch_openphish() + fetch_phishtank()
+    benign = fetch_tranco()
+    print("\n" + "=" * 50)
+    print(f"SUMMARY: {phishing} phishing + {benign} benign")
+    print("=" * 50)

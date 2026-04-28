@@ -1,22 +1,6 @@
-# Môi trường ảo & cache
+.env
 venv/
 __pycache__/
-*.pyc
-*.pyo
-.ipynb_checkpoints/
-
-# Dữ liệu & Model (KHÔNG đẩy lên Git vì nặng & bảo mật)
+*.pkl
 data/*.csv
-model/*.pkl
-*.h5
-*.joblib
-
-# File hệ thống
-.DS_Store
-Thumbs.db
-.env
-*.log
-
-# VS Code
-.vscode/
-*.code-workspace
+data/*.db

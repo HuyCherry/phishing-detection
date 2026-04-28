@@ -1,7 +1,7 @@
 {
-    "built_at": "2026-04-27 22:31:02.219030",
-    "total": 5300,
-    "phishing": 300,
+    "built_at": "2026-04-28 08:40:53.998208",
+    "total": 63362,
+    "phishing": 58362,
     "benign": 5000,
     "features": [
         "UrlLength",

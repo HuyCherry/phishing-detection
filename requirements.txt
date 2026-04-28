@@ -1,6 +1,10 @@
 pandas
 scikit-learn
 xgboost
+lightgbm
 streamlit
 requests
+python-whois
+python-Levenshtein
+python-dotenv
 numpy
