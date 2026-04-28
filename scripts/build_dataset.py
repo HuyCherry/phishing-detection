@@ -7,10 +7,8 @@ import pandas as pd
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-
-# Import extract_lexical_features tu utils/
 sys.path.insert(0, str(BASE_DIR))
+from config import DATA_DIR
 from utils.advanced_features import extract_lexical_features
 
 
@@ -35,13 +33,18 @@ if __name__ == "__main__":
     df = pd.concat(dfs, ignore_index=True)
     before = len(df)
     df = df.drop_duplicates(subset=['url'], keep='first')
+    df = df.dropna(subset=['url'])
     after = len(df)
     print(f"  Deduplicated: {before} -> {after} URLs")
 
     print("  Extracting lexical features...")
-    feat_list = df['url'].apply(lambda u: extract_lexical_features(str(u)))
-    feat_df = pd.DataFrame(feat_list.tolist())
+    feat_list = []
+    for i, url in enumerate(df['url']):
+        feat_list.append(extract_lexical_features(str(url)))
+        if (i + 1) % 1000 == 0:
+            print(f"    Processed {i+1}/{after} URLs...")
 
+    feat_df = pd.DataFrame(feat_list)
     final = feat_df.copy()
     final['CLASS_LABEL'] = df['label'].values
 

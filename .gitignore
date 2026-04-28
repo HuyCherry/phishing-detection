@@ -2,5 +2,9 @@
 venv/
 __pycache__/
 *.pkl
+*.pyc
 data/*.csv
 data/*.db
+data/*.json
+.ipynb_checkpoints/
+notebooks/__pycache__/
