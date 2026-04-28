@@ -2,14 +2,17 @@
 advanced_features.py — Trích xuất đặc trưng nâng cao cho hệ thống phát hiện URL phishing.
 
 Bao gồm:
-  [1] extract_lexical_features  — 25 features thuần string
-  [2] check_ssl                 — Kiểm tra chứng chỉ SSL
-  [3] check_domain_age          — Kiểm tra tuổi domain (WHOIS)
-  [4] check_homograph           — Phát hiện domain giả mạo
-  [5] check_virustotal          — Truy vấn VirusTotal API
-  [6] check_google_safe_browsing— Truy vấn Google Safe Browsing API
-  [7] check_urlhaus             — Truy vấn URLhaus (abuse.ch)
-  [8] get_all_features          — Gộp tất cả thành 1 dict phẳng
+  [1] extract_lexical_features   — 25 features thuần string
+  [2] check_ssl                  — Kiểm tra chứng chỉ SSL
+  [3] check_domain_age           — Kiểm tra tuổi domain (WHOIS)
+  [4] check_homograph            — Phát hiện domain giả mạo
+  [5] check_official_subdomain   — ⭐ NEW: Verify subdomain chính thức (Facebook, YouTube, etc)
+  [6] check_html_content         — ⭐ NEW: Phân tích HTML content (form, password input)
+  [7] check_virustotal           — Truy vấn VirusTotal API
+  [8] check_google_safe_browsing — Truy vấn Google Safe Browsing API
+  [9] check_urlhaus              — Truy vấn URLhaus (abuse.ch)
+  [10] calculate_weighted_risk   — ⭐ NEW: Tính risk score với weighted average
+  [11] get_all_features          — Gộp tất cả thành 1 dict phẳng
 """
 
 import os
@@ -18,39 +21,82 @@ import ssl
 import math
 import time
 import socket
+import hashlib
 import datetime
 import requests
 from pathlib import Path
+from urllib.parse import urlparse
 
-# ─── Constants ────────────────────────────────────────────────────────────────
+# ─── Constants ──────────────────────────────────────────────────────────[...]
 
 SENSITIVE_WORDS = [
     'login', 'bank', 'secure', 'verify', 'update', 'account', 'signin',
     'password', 'confirm', 'paypal', 'wallet', 'free', 'lucky', 'prize',
-    'winner', 'urgent', 'alert', 'suspend',
+    'winner', 'urgent', 'alert', 'suspend', 'action', 'click', 'confirm',
+    'authorize', 'validate', 'activate', 'unlock', 'expire',
 ]
 
 SUSPICIOUS_TLDS = [
     '.tk', '.ml', '.ga', '.cf', '.gq', '.xyz', '.top',
-    '.click', '.download', '.work', '.party',
+    '.click', '.download', '.work', '.party', '.zip', '.pw',
+    '.ninja', '.space', '.cyou', '.cc', '.ws',
 ]
 
 TOP_BRANDS = [
-    'google', 'facebook', 'youtube', 'instagram', 'tiktok',
+    'google', 'facebook', 'youtube', 'instagram', 'tiktok', 'twitter',
     'paypal', 'apple', 'microsoft', 'amazon', 'netflix',
-    'twitter', 'linkedin', 'github', 'bankofamerica', 'chase',
+    'linkedin', 'github', 'bankofamerica', 'chase', 'wellsfargo',
+    'gmail', 'outlook', 'whatsapp', 'telegram', 'discord',
 ]
 
 TRUSTED_CAS = [
     'digicert', 'comodo', 'globalsign', 'entrust', 'godaddy',
     'sectigo', 'thawte', 'geotrust', 'rapidssl', 'symantec',
-    'buypass', 'certum', 'ssl.com', 'usertrust',
+    'buypass', 'certum', 'ssl.com', 'usertrust', 'google',
+    'amazon', 'apple', 'microsoft', 'cloudflare',
 ]
 
+# ⭐ NEW: Official subdomains for major brands
+OFFICIAL_SUBDOMAINS = {
+    "facebook.com": [
+        "www.facebook.com", "m.facebook.com", "l.facebook.com",
+        "graph.facebook.com", "developers.facebook.com", "business.facebook.com",
+    ],
+    "youtube.com": [
+        "www.youtube.com", "m.youtube.com", "youtube.com",
+        "accounts.google.com", "myaccount.google.com", "studio.youtube.com",
+    ],
+    "instagram.com": [
+        "www.instagram.com", "m.instagram.com", "instagram.com",
+        "business.instagram.com", "creators.instagram.com",
+    ],
+    "gmail.com": [
+        "www.gmail.com", "mail.google.com", "accounts.google.com",
+        "accounts.youtube.com", "myaccount.google.com",
+    ],
+    "paypal.com": [
+        "www.paypal.com", "m.paypal.com", "paypal.com",
+        "business.paypal.com", "seller.paypal.com",
+    ],
+    "twitter.com": [
+        "www.twitter.com", "twitter.com", "mobile.twitter.com",
+        "api.twitter.com", "developer.twitter.com",
+    ],
+    "amazon.com": [
+        "www.amazon.com", "amazon.com", "m.amazon.com",
+        "amazon.co.uk", "amazon.de", "seller.amazon.com",
+    ],
+    "microsoft.com": [
+        "www.microsoft.com", "account.microsoft.com", "login.live.com",
+        "outlook.com", "office.com", "mail.live.com",
+    ],
+    "apple.com": [
+        "www.apple.com", "icloud.com", "appleid.apple.com",
+        "id.apple.com", "mail.icloud.com",
+    ],
+}
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# [1] extract_lexical_features
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── Utility Functions ──────────────────────────────────────────────────[...]
 
 def _shannon_entropy(text: str) -> float:
     """Tính Shannon entropy của chuỗi."""
@@ -64,17 +110,27 @@ def _shannon_entropy(text: str) -> float:
     )
 
 
+def _get_main_domain(domain: str) -> str:
+    """Lấy domain chính từ full domain (bỏ subdomain)."""
+    try:
+        parts = domain.lower().split('.')
+        if len(parts) >= 2:
+            return '.'.join(parts[-2:])
+        return domain
+    except:
+        return domain
+
+
+# ════════════════════════════════════════════════════════════════════════
+# [1] extract_lexical_features
+# ════════════════════════════════════════════════════════════════════════
+
 def extract_lexical_features(url: str) -> dict:
     """
     Trích xuất 25 features thuần string từ URL (không cần network).
 
     Returns:
-        dict với 25 keys: UrlLength, NumDots, NumDash, NumDashInHostname,
-        AtSymbol, TildeSymbol, NumUnderscore, NumPercent, NumAmpersand,
-        NumHash, NumNumericChars, NoHttps, IpAddress, SubdomainLevel,
-        HostnameLength, PathLength, QueryLength, DoubleSlashInPath,
-        NumSensitiveWords, NumQueryComponents, DomainInPaths,
-        HttpsInHostname, SuspiciousTLD, RandomString, UrlEntropy
+        dict với 25 keys
     """
     features = {}
     try:
@@ -135,9 +191,9 @@ def extract_lexical_features(url: str) -> dict:
     return features
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 # [2] check_ssl
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 
 def check_ssl(domain: str) -> dict:
     """
@@ -188,9 +244,9 @@ def check_ssl(domain: str) -> dict:
         return default
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 # [3] check_domain_age
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 
 def check_domain_age(domain: str) -> dict:
     """
@@ -242,9 +298,9 @@ def check_domain_age(domain: str) -> dict:
         return default
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 # [4] check_homograph
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 
 def check_homograph(domain: str) -> dict:
     """
@@ -266,7 +322,6 @@ def check_homograph(domain: str) -> dict:
 
         # Lấy phần domain chính (bỏ TLD)
         parts = host.split('.')
-        # Lấy tên domain chính (phần trước TLD cuối cùng)
         if len(parts) >= 2:
             main_domain = parts[-2]
         else:
@@ -314,9 +369,121 @@ def check_homograph(domain: str) -> dict:
         return default
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# [5] check_virustotal
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# [5] ⭐ NEW: check_official_subdomain
+# ════════════════════════════════════════════════════════════════════════
+
+def check_official_subdomain(domain: str) -> dict:
+    """
+    ⭐ NEW: Verify nếu domain có official subdomain hợp lệ.
+    
+    Phát hiện fake domains như:
+    - facebook.com.phishing.tk (ngon!)
+    - login.falseface.tk (ngon!)
+    - facebook.fakepayment.com (ngon!)
+    
+    Returns:
+        dict: requires_official_subdomain, is_official_subdomain, critical_domain
+    """
+    default = {
+        'requires_official_subdomain': 0,
+        'is_official_subdomain': 0,
+        'critical_domain': '',
+    }
+    
+    try:
+        domain_lower = domain.lower().split(':')[0]
+        main_domain = _get_main_domain(domain_lower)
+        
+        # Kiểm tra xem có phải domain chính thức không
+        for official_domain, official_subs in OFFICIAL_SUBDOMAINS.items():
+            # Nếu là domain chính thức nhưng KHÔNG phải subdomain chính thức → DANGER!
+            if main_domain == official_domain:
+                if domain_lower == official_domain:
+                    # Đang truy cập main domain → cần verify SSL
+                    return {
+                        'requires_official_subdomain': 1,
+                        'is_official_subdomain': 0,
+                        'critical_domain': official_domain,
+                    }
+                else:
+                    # Có subdomain → kiểm tra xem có chính thức không
+                    for official_sub in official_subs:
+                        if domain_lower == official_sub:
+                            return {
+                                'requires_official_subdomain': 0,
+                                'is_official_subdomain': 1,
+                                'critical_domain': official_domain,
+                            }
+                    
+                    # Subdomain không chính thức của brand lớn → DANGER!
+                    return {
+                        'requires_official_subdomain': 1,
+                        'is_official_subdomain': 0,
+                        'critical_domain': official_domain,
+                    }
+        
+        return default
+        
+    except Exception:
+        return default
+
+
+# ════════════════════════════════════════════════════════════════════════
+# [6] ⭐ NEW: check_html_content
+# ════════════════════════════════════════════════════════════════════════
+
+def check_html_content(url: str) -> dict:
+    """
+    ⭐ NEW: Phân tích HTML content cho dấu hiệu lừa đảo.
+    
+    Phát hiện:
+    - Form login/password
+    - Iframe redirect
+    - Suspicious meta tags
+    - JS redirect
+    
+    Returns:
+        dict: has_form, has_password_input, has_login_form, has_iframe_redirect
+    """
+    default = {
+        'has_form': 0,
+        'has_password_input': 0,
+        'has_login_form': 0,
+        'has_iframe_redirect': 0,
+    }
+    
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+        }
+        
+        # Disable SSL verification để test fake sites
+        resp = requests.get(
+            url, 
+            headers=headers, 
+            timeout=5, 
+            verify=False,
+            allow_redirects=True
+        )
+        resp.encoding = 'utf-8'
+        html = resp.text.lower()
+        
+        return {
+            'has_form': 1 if '<form' in html else 0,
+            'has_password_input': 1 if ('type="password"' in html or "type='password'" in html) else 0,
+            'has_login_form': 1 if (('login' in html and '<form' in html) or ('password' in html and '<form' in html)) else 0,
+            'has_iframe_redirect': 1 if '<iframe' in html and ('src=' in html) else 0,
+        }
+        
+    except Exception:
+        return default
+
+
+# ════════════════════════════════════════════════════════════════════════
+# [7] check_virustotal
+# ════════════════════════════════════════════════════════════════════════
 
 def check_virustotal(url: str, api_key: str) -> dict:
     """
@@ -355,9 +522,9 @@ def check_virustotal(url: str, api_key: str) -> dict:
         return default
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# [6] check_google_safe_browsing
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# [8] check_google_safe_browsing
+# ════════════════════════════════════════════════════════════════════════
 
 def check_google_safe_browsing(url: str, api_key: str) -> dict:
     """
@@ -410,9 +577,9 @@ def check_google_safe_browsing(url: str, api_key: str) -> dict:
         return default
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# [7] check_urlhaus
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# [9] check_urlhaus
+# ════════════════════════════════════════════════════════════════════════
 
 def check_urlhaus(url: str) -> dict:
     """
@@ -448,9 +615,87 @@ def check_urlhaus(url: str) -> dict:
         return default
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# [8] get_all_features
-# ═══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# [10] ⭐ NEW: calculate_weighted_risk
+# ════════════════════════════════════════════════════════════════════════
+
+def calculate_weighted_risk(ml_score, vt_info, gsb_info, urlhaus_info, 
+                           ssl_info, domain_age_info, homograph_info, 
+                           official_sub_info, html_info) -> float:
+    """
+    ⭐ NEW: Tính risk score với weighted average (thay vì cộng điểm).
+    
+    Weights:
+    - ML Score: 30%
+    - VirusTotal: 15%
+    - Google Safe Browsing: 15%
+    - URLhaus: 10%
+    - Domain Checks (SSL, age, subdomain, homograph): 30%
+    
+    Returns:
+        float: Risk score 0-100
+    """
+    weights = {
+        'ml': 0.30,
+        'vt': 0.15,
+        'gsb': 0.15,
+        'urlhaus': 0.10,
+        'domain_checks': 0.30,
+    }
+    
+    # Normalize VT score
+    vt_positives = vt_info.get('vt_positives', 0)
+    vt_total = vt_info.get('vt_total', 1)
+    vt_score = (vt_positives / max(vt_total, 1)) * 100 if vt_total > 0 else 0
+    
+    # GSB & URLhaus scores
+    gsb_score = 100 if gsb_info.get('gsb_is_dangerous') else 0
+    urlhaus_score = 100 if urlhaus_info.get('urlhaus_is_malicious') else 0
+    
+    # Domain checks scoring
+    domain_score = 0
+    
+    # SSL check
+    if not ssl_info.get('ssl_valid'):
+        domain_score += 20
+    
+    # Domain age
+    if domain_age_info.get('domain_is_new'):
+        domain_score += 15
+    
+    # Homograph attack
+    if homograph_info.get('is_lookalike'):
+        domain_score += 25
+    
+    # Official subdomain check (⭐ CRITICAL)
+    if official_sub_info.get('requires_official_subdomain'):
+        if not official_sub_info.get('is_official_subdomain'):
+            domain_score += 35  # VERY HIGH RISK
+    
+    # HTML content checks
+    if html_info.get('has_login_form'):
+        domain_score += 15
+    if html_info.get('has_iframe_redirect'):
+        domain_score += 10
+    
+    # Cap domain_score at 100
+    domain_score = min(domain_score, 100)
+    
+    # Calculate weighted average
+    risk = (
+        ml_score * weights['ml'] +
+        vt_score * weights['vt'] +
+        gsb_score * weights['gsb'] +
+        urlhaus_score * weights['urlhaus'] +
+        domain_score * weights['domain_checks']
+    )
+    
+    return min(round(risk, 1), 100)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# [11] get_all_features
+# ════════════════════════════════════════════════════════════════════════
 
 def get_all_features(url: str, use_apis: bool = True) -> dict:
     """
@@ -480,25 +725,37 @@ def get_all_features(url: str, use_apis: bool = True) -> dict:
     t0 = time.time()
     lexical = extract_lexical_features(url)
     all_features.update(lexical)
-    print(f"  [1/7] Lexical features    : {time.time()-t0:.2f}s  ({len(lexical)} features)")
+    print(f"  [1/10] Lexical features      : {time.time()-t0:.2f}s  ({len(lexical)} features)")
 
     # ── SSL check ─────────────────────────────────────────────────────────
     t0 = time.time()
     ssl_info = check_ssl(domain)
     all_features.update(ssl_info)
-    print(f"  [2/7] SSL check           : {time.time()-t0:.2f}s  (valid={ssl_info['ssl_valid']})")
+    print(f"  [2/10] SSL check             : {time.time()-t0:.2f}s  (valid={ssl_info['ssl_valid']})")
 
     # ── Domain age ────────────────────────────────────────────────────────
     t0 = time.time()
     age_info = check_domain_age(domain)
     all_features.update(age_info)
-    print(f"  [3/7] Domain age          : {time.time()-t0:.2f}s  (age={age_info['domain_age_days']}d)")
+    print(f"  [3/10] Domain age            : {time.time()-t0:.2f}s  (age={age_info['domain_age_days']}d)")
 
     # ── Homograph ─────────────────────────────────────────────────────────
     t0 = time.time()
     homo_info = check_homograph(domain)
     all_features.update(homo_info)
-    print(f"  [4/7] Homograph check     : {time.time()-t0:.2f}s  (lookalike={homo_info['is_lookalike']})")
+    print(f"  [4/10] Homograph check       : {time.time()-t0:.2f}s  (lookalike={homo_info['is_lookalike']})")
+
+    # ── ⭐ NEW: Official subdomain check ──────────────────────────────────
+    t0 = time.time()
+    official_info = check_official_subdomain(domain)
+    all_features.update(official_info)
+    print(f"  [5/10] Official subdomain    : {time.time()-t0:.2f}s  (official={official_info['is_official_subdomain']})")
+
+    # ── ⭐ NEW: HTML content check ────────────────────────────────────────
+    t0 = time.time()
+    html_info = check_html_content(url)
+    all_features.update(html_info)
+    print(f"  [6/10] HTML content analysis : {time.time()-t0:.2f}s  (form={html_info['has_form']})")
 
     if use_apis:
         vt_key = os.environ.get('VIRUSTOTAL_API_KEY', '')
@@ -508,19 +765,19 @@ def get_all_features(url: str, use_apis: bool = True) -> dict:
         t0 = time.time()
         vt_info = check_virustotal(url, vt_key)
         all_features.update(vt_info)
-        print(f"  [5/7] VirusTotal          : {time.time()-t0:.2f}s  (positives={vt_info['vt_positives']})")
+        print(f"  [7/10] VirusTotal            : {time.time()-t0:.2f}s  (positives={vt_info['vt_positives']})")
 
         # ── Google Safe Browsing ──────────────────────────────────────────
         t0 = time.time()
         gsb_info = check_google_safe_browsing(url, gsb_key)
         all_features.update(gsb_info)
-        print(f"  [6/7] Google Safe Browsing: {time.time()-t0:.2f}s  (dangerous={gsb_info['gsb_is_dangerous']})")
+        print(f"  [8/10] Google Safe Browsing  : {time.time()-t0:.2f}s  (dangerous={gsb_info['gsb_is_dangerous']})")
 
         # ── URLhaus ───────────────────────────────────────────────────────
         t0 = time.time()
         uh_info = check_urlhaus(url)
         all_features.update(uh_info)
-        print(f"  [7/7] URLhaus             : {time.time()-t0:.2f}s  (malicious={uh_info['urlhaus_is_malicious']})")
+        print(f"  [9/10] URLhaus               : {time.time()-t0:.2f}s  (malicious={uh_info['urlhaus_is_malicious']})")
     else:
         # Đặt giá trị mặc định cho API features
         all_features.update({
@@ -528,6 +785,8 @@ def get_all_features(url: str, use_apis: bool = True) -> dict:
             'gsb_is_dangerous': 0, 'gsb_threat_type': 'none',
             'urlhaus_is_malicious': 0, 'urlhaus_threat': 'none',
         })
-        print("  [5-7] API checks          : SKIPPED (use_apis=False)")
+        print("  [7-9] API checks             : SKIPPED (use_apis=False)")
+
+    print(f"  [10/10] Complete             : All features extracted")
 
     return all_features
