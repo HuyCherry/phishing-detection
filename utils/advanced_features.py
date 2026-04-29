@@ -31,6 +31,7 @@ from config import (
     SENSITIVE_WORDS, SUSPICIOUS_TLDS, TOP_BRANDS, TRUSTED_CAS,
     VIRUSTOTAL_KEY, GOOGLE_SB_KEY, DOMAIN_NEW_DAYS, URL_ENTROPY_THRESHOLD,
 )
+from utils.legit_domain_checker import extract_domain
 
 
 # ─── Utility ────────────────────────────────────────────────────────────────
@@ -51,20 +52,30 @@ def _shannon_entropy(text: str) -> float:
 # [1] extract_lexical_features
 # ════════════════════════════════════════════════════════════════════════
 
+DEFAULT_LEXICAL_FEATURES = {
+    'UrlLength': 0, 'NumDots': 0, 'NumDash': 0, 'NumDashInHostname': 0,
+    'AtSymbol': 0, 'TildeSymbol': 0, 'NumUnderscore': 0, 'NumPercent': 0,
+    'NumAmpersand': 0, 'NumHash': 0, 'NumNumericChars': 0, 'NoHttps': 1,
+    'IpAddress': 0, 'SubdomainLevel': 0, 'HostnameLength': 0, 'PathLength': 0,
+    'QueryLength': 0, 'DoubleSlashInPath': 0, 'NumSensitiveWords': 0,
+    'NumQueryComponents': 0, 'DomainInPaths': 0, 'HttpsInHostname': 0,
+    'SuspiciousTLD': 0, 'UrlEntropy': 0.0, 'RandomString': 0
+}
+
 def extract_lexical_features(url: str) -> dict:
     """Trích xuất 25 features thuần string từ URL (không cần network)."""
     features = {}
     try:
         url_lower = url.lower()
-        if '//' in url:
-            after_scheme = url.split('//', 1)[1]
-            parts = after_scheme.split('/', 1)
-            domain = parts[0]
-            path = parts[1] if len(parts) > 1 else ""
-        else:
-            domain = url
+        domain = extract_domain(url_lower)
+        
+        try:
+            parsed = urlparse(url if url_lower.startswith('http') else 'https://' + url)
+            path = parsed.path
+            query = parsed.query
+        except Exception:
             path = ""
-        query = url.split('?', 1)[1] if '?' in url else ""
+            query = ""
 
         features['UrlLength'] = len(url)
         features['NumDots'] = url.count('.')
@@ -92,16 +103,7 @@ def extract_lexical_features(url: str) -> dict:
         features['UrlEntropy'] = _shannon_entropy(url)
         features['RandomString'] = 1 if features['UrlEntropy'] > URL_ENTROPY_THRESHOLD else 0
     except Exception:
-        for key in [
-            'UrlLength', 'NumDots', 'NumDash', 'NumDashInHostname',
-            'AtSymbol', 'TildeSymbol', 'NumUnderscore', 'NumPercent',
-            'NumAmpersand', 'NumHash', 'NumNumericChars', 'NoHttps',
-            'IpAddress', 'SubdomainLevel', 'HostnameLength', 'PathLength',
-            'QueryLength', 'DoubleSlashInPath', 'NumSensitiveWords',
-            'NumQueryComponents', 'DomainInPaths', 'HttpsInHostname',
-            'SuspiciousTLD', 'RandomString', 'UrlEntropy',
-        ]:
-            features[key] = 0
+        return DEFAULT_LEXICAL_FEATURES.copy()
     return features
 
 
@@ -305,63 +307,3 @@ def check_urlhaus(url: str) -> dict:
         return default
 
 
-# ════════════════════════════════════════════════════════════════════════
-# [8] get_all_features
-# ════════════════════════════════════════════════════════════════════════
-
-def get_all_features(url: str, use_apis: bool = True) -> dict:
-    """Gọi TẤT CẢ hàm trên, merge dict, trả về 1 dict phẳng duy nhất."""
-    all_features = {}
-    try:
-        if '//' in url:
-            domain = url.split('//', 1)[1].split('/', 1)[0]
-        else:
-            domain = url.split('/', 1)[0]
-        domain = domain.split(':')[0]
-    except Exception:
-        domain = url
-
-    t0 = time.time()
-    lexical = extract_lexical_features(url)
-    all_features.update(lexical)
-    print(f"  [1/7] Lexical features      : {time.time()-t0:.2f}s")
-
-    t0 = time.time()
-    ssl_info = check_ssl(domain)
-    all_features.update(ssl_info)
-    print(f"  [2/7] SSL check             : {time.time()-t0:.2f}s")
-
-    t0 = time.time()
-    age_info = check_domain_age(domain)
-    all_features.update(age_info)
-    print(f"  [3/7] Domain age            : {time.time()-t0:.2f}s")
-
-    t0 = time.time()
-    homo_info = check_homograph(domain)
-    all_features.update(homo_info)
-    print(f"  [4/7] Homograph check       : {time.time()-t0:.2f}s")
-
-    if use_apis:
-        t0 = time.time()
-        vt_info = check_virustotal(url)
-        all_features.update(vt_info)
-        print(f"  [5/7] VirusTotal            : {time.time()-t0:.2f}s")
-
-        t0 = time.time()
-        gsb_info = check_google_safe_browsing(url)
-        all_features.update(gsb_info)
-        print(f"  [6/7] Google Safe Browsing  : {time.time()-t0:.2f}s")
-
-        t0 = time.time()
-        uh_info = check_urlhaus(url)
-        all_features.update(uh_info)
-        print(f"  [7/7] URLhaus               : {time.time()-t0:.2f}s")
-    else:
-        all_features.update({
-            'vt_positives': 0, 'vt_total': 0, 'vt_is_malicious': 0,
-            'gsb_is_dangerous': 0, 'gsb_threat_type': 'none',
-            'urlhaus_is_malicious': 0, 'urlhaus_threat': 'none',
-        })
-        print("  [5-7] API checks            : SKIPPED")
-
-    return all_features

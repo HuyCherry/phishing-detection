@@ -6,6 +6,7 @@ import os
 import sys
 import time
 import pickle
+import base64
 import pandas as pd
 import streamlit as st
 from pathlib import Path
@@ -29,7 +30,7 @@ from utils.advanced_features import (
     check_homograph, check_virustotal, check_google_safe_browsing,
     check_urlhaus,
 )
-from utils.legit_domain_checker import check_legitimate_domain
+from utils.legit_domain_checker import check_legitimate_domain, extract_domain
 from utils.community_reports import (
     log_check, submit_report, get_url_report_count,
     get_recent_checks, get_recent_reports, get_stats, clear_checks,
@@ -37,7 +38,7 @@ from utils.community_reports import (
 
 # ─── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Kiểm tra URL Lừa Đảo — Chống Phishing VN",
+    page_title="PhishGuardAI — Chống Phishing VN",
     page_icon="🛡️", layout="centered",
 )
 
@@ -47,53 +48,195 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap');
 html, body, [class*="css"] { font-family: 'Be Vietnam Pro', sans-serif; }
 
-.hero {
-    background: linear-gradient(135deg, #0f4c81 0%, #1976d2 60%, #42a5f5 100%);
-    border-radius: 20px; padding: 2.5rem 2rem 2rem; text-align: center;
-    margin-bottom: 2rem; box-shadow: 0 8px 32px rgba(15,76,129,0.3);
+/* Background toàn trang — animated gradient */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg, #0a0f1e 0%, #0d1b35 40%, #0f2a4a 70%, #0a1628 100%);
+    min-height: 100vh;
 }
-.hero h1 { color: white; font-size: 2rem; font-weight: 700; margin-bottom: 0.3rem; }
-.hero p  { color: rgba(255,255,255,0.85); font-size: 1rem; margin: 0; }
-.hero .badge {
+
+/* Xóa background trắng mặc định của block chính */
+[data-testid="stMain"] {
+    background: transparent;
+}
+
+/* Header trong suốt */
+[data-testid="stHeader"] {
+    background: rgba(10, 15, 30, 0.8);
+    backdrop-filter: blur(10px);
+}
+
+/* Hiệu ứng hạt sáng nền (dùng CSS pseudo) */
+[data-testid="stAppViewContainer"]::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-image: 
+        radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.15) 0%, transparent 100%),
+        radial-gradient(1px 1px at 80% 10%, rgba(255,255,255,0.1) 0%, transparent 100%),
+        radial-gradient(1px 1px at 50% 80%, rgba(255,255,255,0.12) 0%, transparent 100%),
+        radial-gradient(1px 1px at 10% 60%, rgba(255,255,255,0.08) 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 50%, rgba(255,255,255,0.1) 0%, transparent 100%),
+        radial-gradient(2px 2px at 35% 15%, rgba(33,150,243,0.2) 0%, transparent 100%),
+        radial-gradient(2px 2px at 65% 70%, rgba(33,150,243,0.15) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Glowing orbs góc màn hình */
+[data-testid="stAppViewContainer"]::after {
+    content: '';
+    position: fixed;
+    top: -200px; left: -200px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(15,76,129,0.3) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Card hero gradient đẹp hơn với border glow */
+.hero-card {
+    background: linear-gradient(135deg, #0f4c81 0%, #1565c0 50%, #1976d2 100%);
+    border-radius: 20px;
+    padding: 2.5rem 2rem;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.15);
+    box-shadow: 
+        0 8px 32px rgba(15,76,129,0.4),
+        0 0 60px rgba(21,101,192,0.2),
+        inset 0 1px 0 rgba(255,255,255,0.1);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+/* Shimmer effect trên hero card */
+.hero-card::before {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: linear-gradient(
+        45deg,
+        transparent 30%,
+        rgba(255,255,255,0.03) 50%,
+        transparent 70%
+    );
+    pointer-events: none;
+}
+.hero-card h1 { color: white; font-size: 2rem; font-weight: 700; margin-bottom: 0.3rem; }
+.hero-card p  { color: rgba(255,255,255,0.85); font-size: 1rem; margin: 0; }
+.hero-card .badge {
     display: inline-block; background: rgba(255,255,255,0.2);
     color: white; border-radius: 20px; padding: 3px 14px;
     font-size: 0.75rem; margin-bottom: 1rem;
 }
 
-.result-safe   { background: #e8f5e9; border-left: 5px solid #2e7d32;
-                  border-radius: 12px; padding: 1.5rem; margin: 1rem 0; }
-.result-safe h2 { color: #1b5e20; margin: 0 0 .5rem; font-size: 1.4rem; }
-.result-safe p  { color: #2e7d32; margin: 0; }
+/* Input field style */
+[data-testid="stTextInput"] input {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+    border-radius: 12px !important;
+    color: white !important;
+    font-size: 1rem !important;
+    padding: 0.75rem 1rem !important;
+    backdrop-filter: blur(10px);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+[data-testid="stTextInput"] input:focus {
+    border-color: rgba(33,150,243,0.6) !important;
+    box-shadow: 0 0 0 3px rgba(33,150,243,0.15) !important;
+}
+[data-testid="stTextInput"] input::placeholder {
+    color: rgba(255,255,255,0.4) !important;
+}
 
-.result-danger  { background: #ffebee; border-left: 5px solid #c62828;
-                  border-radius: 12px; padding: 1.5rem; margin: 1rem 0; }
-.result-danger h2 { color: #b71c1c; margin: 0 0 .5rem; font-size: 1.4rem; }
-.result-danger p  { color: #c62828; margin: 0; }
+/* Nút bấm */
+[data-testid="stButton"] > button {
+    border-radius: 12px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+[data-testid="stButton"] > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(33,150,243,0.4) !important;
+}
 
-.result-warn   { background: #fff8e1; border-left: 5px solid #f57f17;
-                 border-radius: 12px; padding: 1.5rem; margin: 1rem 0; }
-.result-warn h2 { color: #e65100; margin: 0 0 .5rem; font-size: 1.4rem; }
-.result-warn p  { color: #f57f17; margin: 0; }
+/* Tab style */
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    color: rgba(255,255,255,0.6) !important;
+}
+[data-testid="stTabs"] [aria-selected="true"] {
+    color: white !important;
+}
 
-.result-official { background: #e3f2fd; border-left: 5px solid #1565c0;
-                   border-radius: 12px; padding: 1rem 1.5rem; margin: .5rem 0; }
-.result-official p { color: #0d47a1; margin: 0; font-weight: 600; }
+/* Divider */
+hr {
+    border-color: rgba(255,255,255,0.1) !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0a0f1e; }
+::-webkit-scrollbar-thumb { 
+    background: rgba(33,150,243,0.4); 
+    border-radius: 3px; 
+}
+
+/* Result cards */
+.result-danger {
+    background: rgba(183,28,28,0.2) !important;
+    border-left: 5px solid rgba(239,83,80,0.8) !important;
+    border-radius: 12px; padding: 1.5rem; margin: 1rem 0;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 20px rgba(183,28,28,0.2);
+}
+.result-danger h2 { color: #ef5350; margin: 0 0 .5rem; font-size: 1.4rem; }
+.result-danger p  { color: #e57373; margin: 0; }
+
+.result-warn {
+    background: rgba(230,81,0,0.2) !important;
+    border-left: 5px solid rgba(255,152,0,0.8) !important;
+    border-radius: 12px; padding: 1.5rem; margin: 1rem 0;
+    backdrop-filter: blur(10px);
+}
+.result-warn h2 { color: #ffa726; margin: 0 0 .5rem; font-size: 1.4rem; }
+.result-warn p  { color: #ffb74d; margin: 0; }
+
+.result-safe {
+    background: rgba(27,94,32,0.2) !important;
+    border-left: 5px solid rgba(76,175,80,0.8) !important;
+    border-radius: 12px; padding: 1.5rem; margin: 1rem 0;
+    backdrop-filter: blur(10px);
+}
+.result-safe h2 { color: #66bb6a; margin: 0 0 .5rem; font-size: 1.4rem; }
+.result-safe p  { color: #81c784; margin: 0; }
+
+.result-official { 
+    background: rgba(21,101,192,0.2); border-left: 5px solid #42a5f5; 
+    border-radius: 12px; padding: 1rem 1.5rem; margin: .5rem 0; backdrop-filter: blur(10px); 
+}
+.result-official p { color: #90caf9; margin: 0; font-weight: 600; }
 
 .flag-item   { display:flex; align-items:center; gap:10px; padding:10px 14px;
-               border-radius:8px; margin-bottom:8px; font-size:.9rem; }
-.flag-high   { background:#ffebee; color:#c62828; border:1px solid #ffcdd2; }
-.flag-medium { background:#fff3e0; color:#e65100; border:1px solid #ffe0b2; }
-.flag-low    { background:#fffde7; color:#f57f17; border:1px solid #fff9c4; }
-.flag-ok     { background:#e8f5e9; color:#2e7d32; border:1px solid #c8e6c9; }
+               border-radius:8px; margin-bottom:8px; font-size:.9rem; backdrop-filter: blur(10px); }
+.flag-high   { background:rgba(183,28,28,0.2); color:#ef5350; border:1px solid rgba(239,83,80,0.4); }
+.flag-medium { background:rgba(230,81,0,0.2); color:#ffa726; border:1px solid rgba(255,152,0,0.4); }
+.flag-low    { background:rgba(245,127,23,0.2); color:#ffee58; border:1px solid rgba(255,235,59,0.4); }
+.flag-ok     { background:rgba(27,94,32,0.2); color:#66bb6a; border:1px solid rgba(76,175,80,0.4); }
 
-.score-bar-container { background:#e0e0e0; border-radius:10px; height:14px;
+.score-bar-container { background:rgba(255,255,255,0.1); border-radius:10px; height:14px;
                        margin:.5rem 0 1.5rem; overflow:hidden; }
 .score-bar-fill      { height:100%; border-radius:10px; transition:width .8s ease; }
 
 .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:1rem 0; }
-.stat-box  { background:#f5f5f5; border-radius:10px; padding:12px; text-align:center; }
-.stat-box .val { font-size:1.4rem; font-weight:700; color:#0f4c81; }
-.stat-box .lbl { font-size:.7rem; color:#757575; margin-top:2px; }
+.stat-box  { background:rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius:12px; padding:12px; text-align:center; backdrop-filter: blur(10px); }
+.stat-box .val { font-size:1.4rem; font-weight:700; color:#64b5f6; }
+.stat-box .lbl { font-size:.7rem; color:rgba(255,255,255,0.6); margin-top:2px; }
+
+/* Text color overrides for dark theme */
+p, h1, h2, h3, h4, h5, h6, label, .stMarkdown { color: rgba(255,255,255,0.9) !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -106,12 +249,25 @@ def load_model():
     return data['model'], data['feature_names']
 
 
+@st.cache_data
+def get_base64_of_bin_file(bin_file):
+    try:
+        with open(bin_file, 'rb') as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except Exception:
+        return ""
+
 # ─── Hero ────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="hero">
+img_b64 = get_base64_of_bin_file(BASE_DIR / "assets" / "hero.png")
+img_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; max-width: 600px; margin-top: 1.5rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">' if img_b64 else ''
+
+st.markdown(f"""
+<div class="hero-card" style="margin-bottom: 2rem;">
   <div class="badge">🛡️ Bảo vệ người dùng Việt Nam</div>
-  <h1>Kiểm tra URL Lừa Đảo</h1>
+  <h1>PhishGuardAI</h1>
   <p>Phân tích tức thì · Machine Learning · Cơ sở dữ liệu mối đe dọa thực tế</p>
+  {img_html}
 </div>
 """, unsafe_allow_html=True)
 
@@ -157,10 +313,7 @@ with tab_check:
             if not url.startswith('http'):
                 url = 'https://' + url
 
-            try:
-                domain = url.split('//')[1].split('/')[0].split(':')[0]
-            except Exception:
-                domain = url
+            domain = extract_domain(url)
 
             steps = 8 if use_apis else 5
             progress = st.progress(0)

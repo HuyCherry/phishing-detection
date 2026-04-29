@@ -28,7 +28,7 @@ def _get_root_domain(domain: str) -> str:
     return domain
 
 
-def _extract_domain(url: str) -> str:
+def extract_domain(url: str) -> str:
     """Tách domain từ URL."""
     try:
         if not url.startswith('http'):
@@ -66,7 +66,7 @@ def check_legitimate_domain(url: str) -> dict:
     }
 
     try:
-        full_domain = _extract_domain(url)
+        full_domain = extract_domain(url)
         root_domain = _get_root_domain(full_domain)
         is_https = url.lower().startswith('https')
 
