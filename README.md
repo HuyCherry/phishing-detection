@@ -80,7 +80,8 @@ A production-ready phishing detection framework combining **ML ensemble models**
 - pip / conda
 - API keys for:
   - VirusTotal (free tier available)
-  - Google Safe Browsing
+  - Google Safe Browsin
+  - Url harus
 
 ### Installation
 
