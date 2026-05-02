@@ -31,7 +31,7 @@ from utils.advanced_features import (
     check_urlhaus,
 )
 from utils.legit_domain_checker import check_legitimate_domain, extract_domain
-from utils.community_reports import (
+from utils.database import (
     log_check, submit_report, get_url_report_count,
     get_recent_checks, get_recent_reports, get_stats, clear_checks,
 )
@@ -607,5 +607,5 @@ with tab_guide:
 
 # ─── Footer ──────────────────────────────────────────────────────────────────
 st.divider()
-st.caption("🔒 Dữ liệu không được lưu lên server · Mọi kiểm tra lưu cục bộ trên máy bạn")
+st.caption("🔒  Dữ liệu được lưu trữ và quản lý bởi hệ thống MongoDB nội bộ.")
 st.caption("🛡️ Ensemble ML: Random Forest + XGBoost + LightGBM | SSL + WHOIS + VirusTotal + Google SB + URLhaus")
