@@ -3,7 +3,10 @@ legit_domain_checker.py — Kiểm tra domain hợp lệ VN (8-point verificatio
 
 Phát hiện subdomain spoofing: vietcombank.com.vn.evil.com
 Xác minh domain chính thức: vietcombank.com.vn → SAFE
+Tích hợp Tranco Top 5000 để giảm false positive cho domain phổ biến toàn cầu.
 """
+import csv
+import logging
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -15,6 +18,42 @@ from config import (
     VN_OFFICIAL_BANKS, VN_OFFICIAL_GOV, SOCIAL_MEDIA_OFFICIAL,
     ALL_OFFICIAL_DOMAINS, TOP_BRANDS,
 )
+
+logger = logging.getLogger(__name__)
+
+# ─── Load Tranco Top Sites (one-time) ────────────────────────────────────────
+_tranco_domains: set | None = None
+
+
+def _load_tranco() -> set:
+    """Load Tranco top domains từ CSV (lazy singleton)."""
+    global _tranco_domains
+    if _tranco_domains is not None:
+        return _tranco_domains
+
+    tranco_path = BASE_DIR / "data" / "tranco_benign.csv"
+    _tranco_domains = set()
+    if tranco_path.exists():
+        try:
+            with open(tranco_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    raw_url = row.get("url", "").strip()
+                    # Extract domain from the URL column (format: http://domain.com)
+                    domain = raw_url.replace("http://", "").replace("https://", "").strip("/").lower()
+                    if domain:
+                        _tranco_domains.add(domain)
+            logger.info("Tranco whitelist loaded: %d domains", len(_tranco_domains))
+        except Exception:
+            logger.exception("Failed to load Tranco CSV")
+    return _tranco_domains
+
+
+def is_tranco_domain(domain: str) -> bool:
+    """Kiểm tra domain có nằm trong Tranco Top Sites không."""
+    tranco = _load_tranco()
+    root = _get_root_domain(domain)
+    return root in tranco or domain in tranco
 
 
 def _get_root_domain(domain: str) -> str:
@@ -59,6 +98,7 @@ def check_legitimate_domain(url: str) -> dict:
         'is_official_gov': 0,
         'is_social_media': 0,
         'is_exact_match': 0,
+        'is_tranco_top': 0,
         'is_subdomain_spoof': 0,
         'brand_in_subdomain': 0,
         'uses_official_https': 0,
@@ -105,14 +145,22 @@ def check_legitimate_domain(url: str) -> dict:
                 is_exact = 1
                 break
 
+        # ── Check 4b: Tranco Top 5000 (popular global domains) ────────────
+        in_tranco = 1 if is_tranco_domain(full_domain) else 0
+        if in_tranco and not is_exact:
+            is_exact = 1  # Treat Tranco domains as trusted
+
         # ── Check 5: Subdomain spoofing detection ────────────────────────
         is_spoof = 0
-        if not is_exact:
+        if not is_exact and not in_tranco:
             # Check if any brand name appears in the full domain
             # but root domain is NOT official
             for brand in TOP_BRANDS:
-                if brand in full_domain:
-                    # Brand found in domain but not an official domain → spoof
+                # Skip short brand names (≤3 chars) that cause false matches
+                if len(brand) <= 3:
+                    continue
+                # Only flag if brand is not the root domain itself
+                if brand in full_domain and brand not in root_domain:
                     is_spoof = 1
                     break
             # Check for official domains used as subdomains
@@ -143,6 +191,8 @@ def check_legitimate_domain(url: str) -> dict:
         score = 0
         if is_exact:
             score += 60
+        if in_tranco:
+            score += 25
         if is_bank or is_gov:
             score += 20
         if is_social:
@@ -160,6 +210,7 @@ def check_legitimate_domain(url: str) -> dict:
             'is_official_gov': is_gov,
             'is_social_media': is_social,
             'is_exact_match': is_exact,
+            'is_tranco_top': in_tranco,
             'is_subdomain_spoof': is_spoof,
             'brand_in_subdomain': brand_in_sub,
             'uses_official_https': uses_https,

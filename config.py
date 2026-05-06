@@ -86,11 +86,28 @@ VN_OFFICIAL_GOV = [
 
 # ─── Official Domains — Social Media & Big Tech ─────────────────────────────
 SOCIAL_MEDIA_OFFICIAL = [
+    # Social media
     'facebook.com', 'instagram.com', 'youtube.com', 'tiktok.com',
     'twitter.com', 'x.com', 'linkedin.com', 'zalo.me',
-    'google.com', 'gmail.com', 'github.com',
-    'apple.com', 'microsoft.com', 'amazon.com',
+    'reddit.com', 'pinterest.com', 'tumblr.com', 'snapchat.com',
+    'threads.net', 'mastodon.social',
+    # Big Tech
+    'google.com', 'gmail.com', 'github.com', 'gitlab.com',
+    'apple.com', 'microsoft.com', 'amazon.com', 'aws.amazon.com',
     'paypal.com', 'netflix.com', 'whatsapp.com',
+    # Major sites
+    'wikipedia.org', 'wikimedia.org', 'stackoverflow.com',
+    'medium.com', 'notion.so', 'figma.com', 'canva.com',
+    'spotify.com', 'twitch.tv', 'zoom.us',
+    'dropbox.com', 'slack.com', 'trello.com',
+    'cloudflare.com', 'vercel.app', 'netlify.com',
+    'openai.com', 'chatgpt.com',
+    # Vietnamese popular
+    'vnexpress.net', 'tuoitre.vn', 'thanhnien.vn',
+    'dantri.com.vn', 'kenh14.vn', 'tinhte.vn',
+    'fpt.com.vn', 'viettel.vn', 'vnpt.vn',
+    'sendo.vn', 'thegioididong.com', 'dienmayxanh.com',
+    'cellphones.com.vn', 'phongvu.vn',
 ]
 
 # ─── Combined whitelist ─────────────────────────────────────────────────────

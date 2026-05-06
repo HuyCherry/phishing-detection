@@ -1,0 +1,109 @@
+body {
+    width: 320px;
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+    color: #333;
+}
+
+.header {
+    background: linear-gradient(135deg, #0f4c81 0%, #1565c0 100%);
+    color: white;
+    padding: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.header img {
+    width: 24px;
+    height: 24px;
+}
+
+.header h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.container {
+    padding: 15px;
+}
+
+.status-box {
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    margin-bottom: 15px;
+    background: #e0e0e0;
+    border-left: 5px solid #9e9e9e;
+}
+
+.status-box.safe {
+    background: #e8f5e9;
+    border-color: #4caf50;
+}
+.status-box.safe h3 { color: #2e7d32; }
+
+.status-box.suspicious {
+    background: #fff3e0;
+    border-color: #ff9800;
+}
+.status-box.suspicious h3 { color: #ef6c00; }
+
+.status-box.dangerous {
+    background: #ffebee;
+    border-color: #f44336;
+}
+.status-box.dangerous h3 { color: #c62828; }
+
+.status-box h3 {
+    margin: 0 0 5px 0;
+    font-size: 18px;
+}
+
+.status-box p {
+    margin: 0;
+    font-size: 14px;
+    color: #555;
+}
+
+.flags-container {
+    background: white;
+    border-radius: 8px;
+    padding: 10px 15px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    margin-bottom: 15px;
+}
+
+.flags-container h4 {
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    color: #666;
+}
+
+.flags-container ul {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 13px;
+    color: #d32f2f;
+}
+
+.flags-container li {
+    margin-bottom: 5px;
+}
+
+.action-btn button {
+    width: 100%;
+    padding: 10px;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.action-btn button:hover {
+    background: #f0f0f0;
+}

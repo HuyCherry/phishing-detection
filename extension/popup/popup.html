@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="header">
+        <img src="../icons/icon48.png" alt="PhishGuardAI" id="logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiI+PHBhdGggZD0iTTEyIDFMMyA1djZjMCA1LjU1IDMuODQgMTAuNzQgOSAxMGM1LjE2LS43NCA5LTUuOTIgOS0xMFY1bS05IDRjMS4xIDAgMiAuOSAyIDJzLS45IDItMiAyLTIgLjktdC0tMmMwLTEuMS45LTIgMi0yem0wIDhjLTIuNjcgMC04LTEuMzMtOC00di0xYzAtLjU1LjQ1LTEgMS0xaDE0YzEuNTUgMCAxIC40NSAxIDF2MWMwIDIuNjctNS4zMyA0LTggNHoiLz48L3N2Zz4='">
+        <h2>PhishGuardAI</h2>
+    </div>
+
+    <div class="container" id="main-content">
+        <div class="status-box" id="status-box">
+            <h3 id="verdict-title">Đang phân tích...</h3>
+            <p id="risk-score">Điểm rủi ro: --</p>
+        </div>
+
+        <div class="flags-container" id="flags-container" style="display: none;">
+            <h4>Dấu hiệu nhận biết:</h4>
+            <ul id="flags-list"></ul>
+        </div>
+
+        <div class="action-btn">
+            <button id="btn-report">Báo cáo URL này</button>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
