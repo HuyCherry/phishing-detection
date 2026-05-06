@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv(BASE_DIR / ".env")
 
 from config import MODEL_PATH
-from ui import tab_check, tab_history, tab_guide
+from ui import tab_check, tab_history, tab_guide, tab_html
 
 # ─── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -74,12 +74,15 @@ except Exception as e:
 
 
 # ─── Tabs ────────────────────────────────────────────────────────────────────
-t_check, t_history, t_guide = st.tabs([
-    "🔍 Kiểm tra URL", "📋 Lịch sử & Thống kê", "📖 Hướng dẫn"
+t_check, t_html, t_history, t_guide = st.tabs([
+    "🔍 Kiểm tra URL", "🌐 Kiểm tra HTML", "📋 Lịch sử & Thống kê", "📖 Hướng dẫn"
 ])
 
 with t_check:
     tab_check.render(model, feature_names)
+
+with t_html:
+    tab_html.render()
 
 with t_history:
     tab_history.render()
