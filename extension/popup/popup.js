@@ -21,6 +21,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-report').addEventListener('click', () => {
         window.open('http://127.0.0.1:8501', '_blank');
     });
+
+    // New Scan Page feature
+    const btnScan = document.getElementById('btn-scan');
+    if (btnScan) {
+        btnScan.addEventListener('click', async () => {
+            btnScan.innerText = "Đang quét...";
+            btnScan.disabled = true;
+            try {
+                chrome.tabs.sendMessage(tab.id, { action: "scan_page_dom" }, (response) => {
+                    btnScan.innerText = "🔍 Quét Email/Trang này";
+                    btnScan.disabled = false;
+                    if (chrome.runtime.lastError) {
+                        // Content script not ready or not injected
+                        updateUI(null, "Không thể quét trang này");
+                    }
+                });
+            } catch (err) {
+                btnScan.innerText = "🔍 Quét Email/Trang này";
+                btnScan.disabled = false;
+            }
+        });
+    }
 });
 
 async function analyzeUrl(url) {

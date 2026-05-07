@@ -141,6 +141,19 @@ def _get_body_parts(
                     text_body = decoded
         except Exception:
             logger.debug("Error decoding email body", exc_info=True)
+    if not text_body and html_body:
+        from bs4 import BeautifulSoup
+        try:
+            soup = BeautifulSoup(html_body, 'html.parser')
+            text_body = soup.get_text(separator=' ')
+            # Extract links from a tags in HTML body
+            links = soup.find_all("a", href=True)
+            for link in links:
+                href = link.get("href", "")
+                if href.startswith("http"):
+                    text_body += f" {href} "
+        except Exception:
+            pass
 
     return text_body, html_body
 

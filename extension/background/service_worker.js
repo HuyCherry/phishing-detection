@@ -42,3 +42,30 @@ chrome.webNavigation.onCommitted.addListener(async (details) => {
         }
     }
 });
+
+// Listen for messages from content scripts (to bypass Mixed Content blocking)
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "api_check_html") {
+        fetch("http://127.0.0.1:8000/v1/check-html", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(request.payload)
+        })
+        .then(res => res.json())
+        .then(data => sendResponse({ success: true, data: data }))
+        .catch(err => sendResponse({ success: false, error: err.toString() }));
+        return true; // Keep message channel open for async
+    }
+    
+    if (request.action === "api_check_url") {
+        fetch("http://127.0.0.1:8000/v1/check-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(request.payload)
+        })
+        .then(res => res.json())
+        .then(data => sendResponse({ success: true, data: data }))
+        .catch(err => sendResponse({ success: false, error: err.toString() }));
+        return true; // Keep message channel open for async
+    }
+});

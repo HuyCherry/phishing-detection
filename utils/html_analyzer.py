@@ -44,6 +44,14 @@ _VN_BRAND_KEYWORDS = [
     "momo", "zalopay", "vnpay", "shopee", "lazada", "tiki",
 ]
 
+# Urgency keywords commonly used in phishing
+_URGENCY_KEYWORDS = [
+    "khóa tài khoản", "xác minh ngay", "hủy giao dịch",
+    "bị đình chỉ", "tạm khóa", "khẩn cấp", "cập nhật ngay",
+    "xác nhận danh tính", "trúng thưởng", "bị xâm nhập",
+    "suspend", "verify now", "urgent", "validate", "locked"
+]
+
 
 def _extract_domain(url: str) -> str:
     """Extract domain from a URL string, safely."""
@@ -81,8 +89,10 @@ def analyze_html(
         "external_resources_count": 0,
         "meta_refresh_redirect": 0,
         "brand_keywords_found": [],
+        "urgency_keywords_found": [],
         "cloaked_content": 0,
         "iframe_external": 0,
+        "invisible_links": 0,
         "html_risk_score": 0.0,
         "html_flags": [],
     }
@@ -192,8 +202,18 @@ def analyze_html(
             flags.append(
                 f"Brand keywords in content: {', '.join(found_brands[:5])}"
             )
+
+        # Urgency keywords
+        found_urgency = []
+        for word in _URGENCY_KEYWORDS:
+            if word in full_text:
+                found_urgency.append(word)
+        if found_urgency:
+            result["urgency_keywords_found"] = found_urgency[:3]
+            flags.append(f"Urgency manipulation: {', '.join(found_urgency[:3])}")
+            
     except Exception:
-        logger.debug("Error analyzing brand impersonation", exc_info=True)
+        logger.debug("Error analyzing brand/urgency impersonation", exc_info=True)
 
     # ── 7. Cloaked content (display:none with sensitive text) ─────────────
     try:
@@ -227,6 +247,32 @@ def analyze_html(
     except Exception:
         logger.debug("Error analyzing iframes", exc_info=True)
 
+    # ── 9. Invisible or obfuscated links ─────────────────────────────────
+    try:
+        links = soup.find_all("a", href=True)
+        for link in links:
+            href = link.get("href", "")
+            if not href.startswith("http"):
+                continue
+            # Check if link text is a legitimate URL but href points elsewhere
+            text = link.get_text().strip().lower()
+            if text.startswith("http") or "www." in text:
+                text_domain = _extract_domain(text)
+                href_domain = _extract_domain(href)
+                if text_domain and href_domain and text_domain != href_domain:
+                    result["invisible_links"] = 1
+                    flags.append(f"Deceptive link (shows {text_domain} but goes to {href_domain})")
+                    break
+            
+            # Check if link is invisible via CSS
+            style = link.get("style", "").lower()
+            if "opacity: 0" in style or "display: none" in style or "visibility: hidden" in style:
+                result["invisible_links"] = 1
+                flags.append("Invisible/Hidden link found")
+                break
+    except Exception:
+        logger.debug("Error analyzing invisible links", exc_info=True)
+
     # ── Calculate risk score ─────────────────────────────────────────────
     score = 0.0
     if result["form_action_suspicious"]:
@@ -243,6 +289,10 @@ def analyze_html(
         score += SIGNALS["password_field"]
     if result["has_hidden_inputs"]:
         score += SIGNALS["hidden_inputs"]
+    if result.get("urgency_keywords_found"):
+        score += 15
+    if result.get("invisible_links"):
+        score += 20
 
     result["html_risk_score"] = min(score, 100.0)
 
